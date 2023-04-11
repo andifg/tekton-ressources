@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: my-pod
+spec:
+  volumes:
+  - name: data
+    persistentVolumeClaim:
+      claimName: pipeline-pvc
+  containers:
+  - name: my-container
+    image: ubuntu
+    command:
+    - /bin/sh
+    - "-c"
+    - "while true; do echo 'Hello, World!'; sleep 5; done"
+    volumeMounts:
+    - name: data
+      mountPath: /data

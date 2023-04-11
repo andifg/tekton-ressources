@@ -1,0 +1,129 @@
+apiVersion: tekton.dev/v1beta1
+kind: Pipeline
+metadata:
+  name: git-clone
+spec:
+  workspaces:
+      - name: ssh-creds
+      - name: app-pvc
+      - name: argo-pvc
+  params:
+  - name: image-tag 
+    default: latest
+  - name: dev-repo-url
+    description: Git url for python application code containing containerfile
+  - name: context-path
+    description: Context path within application and deployment repository
+    default: /app
+  tasks:
+  - name: clone-repo-app 
+    workspaces:
+      - name: ssh-directory
+        workspace: ssh-creds
+      - name: output
+        workspace: app-pvc
+    params:
+      - name: url
+        value: $(params.dev-repo-url)
+    taskRef:
+      resolver: hub
+      params:
+      - name: catalog # optional
+        value: tekton-catalog-tasks
+      - name: type # optional
+        value: artifact 
+      - name: kind
+        value: task
+      - name: name
+        value: git-clone
+      - name: version
+        value: "0.9"
+  - name: list-repo-files
+    runAfter:
+      - clone-repo-app
+    workspaces:
+      - name: git-directory
+        workspace: app-pvc
+    taskSpec:
+      steps:
+      - name: print-all
+        image: ubuntu
+        script:  |
+          #!/usr/bin/env bash
+          echo "Hello from Bash!" 
+          ls -la /app
+          pwd
+          cd /app
+          echo $(workspaces.git-directory.path)
+      workspaces:
+        - name: git-directory
+          description: Directory where the cloned code is stored optional
+          mountPath: /app
+  - name: build-and-push
+    runAfter:
+      - list-repo-files
+    workspaces:
+      - name: source
+        workspace: app-pvc
+    params:
+      - name: IMAGE
+        value: image-registry.openshift-image-registry.svc:5000/tekton-examples/fast-api-server:$(params.image-tag)
+    taskRef:
+      resolver: cluster
+      params:
+      - name: kind
+        value: task
+      - name: name
+        value: buildah
+      - name: namespace
+        value: cluster-tasks
+  - name: update-argo-repo
+    workspaces:
+      - name: ssh-directory
+        workspace: ssh-creds
+      - name: source
+        workspace: argo-pvc
+    params:
+      - name: GIT_SCRIPT
+        value: |
+          git clone git@github.com:andifg/openshift-pipelines-application.git
+          cd openshift-pipelines-application/app
+          IMAGE_TAG=$(params.image-tag)
+          echo $IMAGE_TAG
+          sed -i'' -e "s/\(image-registry.openshift-image-registry.svc:5000\/tekton-examples\/fast-api-server:\).*$/\1$IMAGE_TAG/g" deployment.yaml
+          ls -la
+          git add deployment.yaml
+          git commit -m"update deployment to use image version $IMAGE_TAG"
+          git push
+      - name: GIT_USER_NAME
+        value: "Openshift Pipeline Sevice Account"
+      - name: GIT_USER_EMAIL
+        value: pipeline@example.com
+    taskRef:
+      resolver: hub
+      params:
+      - name: catalog # optional
+        value: tekton-catalog-tasks
+      - name: type # optional
+        value: artifact 
+      - name: kind
+        value: task
+      - name: name
+        value: git-cli
+      - name: version
+        value: "0.4"
+
+
+# - switch timestamp and hash
+# - fetch timestamp automatically via metadata from openshift ressource 
+# - go more to general thinking of pipeline design
+# - fetch git ssh url from git webhook
+# - use UBI if possible
+# - show up annotations for managed by openshift-pipelines for rolebingings 
+# - Tekton Downward API for getting creation timestamp 
+# - For QA/Prod create PR
+# - Triggers and pipeline and pipeline as code
+# Pipeline as code: is it possible to do a cluster resolver for pipelines
+# Lookup generateName: narcis-
+# Go for triggers -> interceptor
+# $(tasks.clone-repo-app.results.commit)

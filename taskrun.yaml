@@ -1,0 +1,22 @@
+apiVersion: tekton.dev/v1beta1
+kind: TaskRun
+metadata:
+  name: remote-task-reference
+spec:
+  taskRef:
+    resolver: hub
+    params:
+    - name: kind
+      value: task
+    - name: name
+      value: git-clone
+    - name: version
+      value: "0.6"
+  params:
+    - name: url
+      value: https://github.com/githubtraining/hellogitworld.git
+  workspaces:
+    - name: output
+      persistentVolumeClaim:
+        claimName: pipeline-pvc
+

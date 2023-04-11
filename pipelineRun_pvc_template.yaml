@@ -1,0 +1,34 @@
+apiVersion: tekton.dev/v1beta1
+kind: PipelineRun
+metadata:
+  generateName: git-clone-
+spec:
+  pipelineRef:
+    name: git-clone
+  params:
+  - name: image-tag
+    value: 041120231544-1f3acb53eb4a4bce563c65dd0df9531518d2371
+  - name: dev-repo-url
+    value: git@github.com:andifg/tekton_and_argo_test.git
+  workspaces:
+  - name: ssh-creds
+    secret:
+      secretName: ssh-creds
+  - name: app-pvc
+    volumeClaimTemplate:
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 300Mi
+        volumeMode: Filesystem
+  - name: argo-pvc
+    volumeClaimTemplate:
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 300Mi
+        volumeMode: Filesystem
