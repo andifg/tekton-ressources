@@ -2,14 +2,23 @@ apiVersion: tekton.dev/v1beta1
 kind: PipelineRun
 metadata:
   generateName: git-clone-
+  namespace: tekton-pipelines
 spec:
   pipelineRef:
     name: git-clone
   params:
-  - name: image-tag
-    value: 041120231544-1f3acb53eb4a4bce563c65dd0df9531518d2371
   - name: dev-repo-url
     value: git@github.com:andifg/tekton_and_argo_test.git
+  - name: dev-depl-url
+    value: git@github.com:andifg/openshift-pipelines-application.git
+  - name: context-path
+    value: /hello-world
+  - name: image-name
+    value: image-registry.openshift-image-registry.svc:5000/tekton-pipelines/fast-api-server
+  - name: yq-select
+    value: (.spec.template.spec.containers[] | select(.name == "my-container") .image)
+  - name: yq-target
+    value: openshift-pipelines-application/hello-world/deployment.yaml
   workspaces:
   - name: ssh-creds
     secret:
@@ -32,3 +41,4 @@ spec:
           requests:
             storage: 300Mi
         volumeMode: Filesystem
+  completionDeadlineSeconds: 1800

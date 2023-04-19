@@ -1,22 +1,42 @@
 apiVersion: tekton.dev/v1beta1
 kind: TaskRun
 metadata:
-  name: remote-task-reference
+  generateName: git-clone-
+  namespace: tekton-pipelines
 spec:
   taskRef:
-    resolver: hub
+    resolver: cluster
     params:
     - name: kind
       value: task
     - name: name
-      value: git-clone
-    - name: version
-      value: "0.6"
+      value: git-ops-commit
+    - name: namespace
+      value: cluster-tasks
   params:
-    - name: url
-      value: https://github.com/githubtraining/hellogitworld.git
+  - name: image-tag
+    value: 041420231544-1f3acb53eb4a4bce563c65dd0df9531518d2371
+  - name: dev-repo-url
+    value: git@github.com:andifg/tekton_and_argo_test.git
+  - name: dev-depl-url
+    value: git@github.com:andifg/openshift-pipelines-application.git
+  - name: context-path
+    value: /hello-world
+  - name: image-name
+    value: image-registry.openshift-image-registry.svc:5000/tekton-pipelines/fast-api-server
+  - name: GIT_SCRIPT
+    value: |
+      git clone git@github.com:andifg/openshift-pipelines-application.git
   workspaces:
-    - name: output
-      persistentVolumeClaim:
-        claimName: pipeline-pvc
-
+  - name: ssh-directory
+    secret:
+      secretName: ssh-creds
+  - name: source
+    volumeClaimTemplate:
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 300Mi
+        volumeMode: Filesystem
