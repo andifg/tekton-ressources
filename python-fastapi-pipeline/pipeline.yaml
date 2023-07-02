@@ -48,6 +48,27 @@ spec:
       - name: version
         value: "0.9"
 
+  - name: poetry-install
+    runAfter:
+      - clone-repo-app
+    workspaces:
+      - name: source
+        workspace: app-pvc
+    params:
+      - name: timestamp
+        value: "$(tasks.clone-repo-app.results.committer-date)"
+      - name: repository_url
+        value: $(params.dev-repo-url)
+    taskRef:
+      resolver: cluster
+      params:
+      - name: kind
+        value: task
+      - name: name
+        value: poetry-install
+      - name: namespace
+        value: tekton-resources
+
   - name: transform-timestamp-to-timestring
     runAfter:
       - clone-repo-app
@@ -135,6 +156,7 @@ spec:
   - name: update-argo-repo
     runAfter:
       - build-and-push
+      - poetry-install
     workspaces:
       - name: ssh-directory
         workspace: ssh-creds
