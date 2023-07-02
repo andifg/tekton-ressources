@@ -2,10 +2,17 @@ apiVersion: tekton.dev/v1beta1
 kind: PipelineRun
 metadata:
   generateName: git-clone-
-  namespace: tekton-pipelines
+  namespace: tekton-resources
 spec:
   pipelineRef:
-    name: git-clone
+    resolver: cluster
+    params:
+      - name: kind
+        value: pipeline
+      - name: name
+        value: python-lint-test-build-deploy
+      - name: namespace
+        value: tekton-resources
   params:
   - name: dev-repo-url
     value: git@github.com:andifg/tekton_and_argo_test.git
@@ -41,4 +48,3 @@ spec:
           requests:
             storage: 300Mi
         volumeMode: Filesystem
-  completionDeadlineSeconds: 1800

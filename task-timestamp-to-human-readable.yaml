@@ -1,0 +1,31 @@
+---
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: timestamp-to-timestring
+  namespace: tekton-resources
+  labels:
+    app.kubernetes.io/version: "0.1"
+spec:
+  description: >-
+    Task to create a human reable time string from a timestamp
+  params:
+  - name: timestamp
+    description: Unix timestamp
+  - name: default_image
+    default: quay.io/jitesoft/alpine
+  results:
+  - name: time-string
+    description: Digest of the image just built.
+  steps:
+  - name: transform
+    image: $(params.default_image)
+    env:
+      - name: TIMESTAMP
+        value: "$(params.timestamp)"
+    script: |
+      #!/usr/bin/env sh
+      STRING=$(date -d @$TIMESTAMP +"%Y-%m-%d-%H:%M")
+      echo $STRING
+      printf "%s" "${STRING}" > $(results.time-string.path)
+      # echo -n  "$STRING" >    $(results.time-string.path)
