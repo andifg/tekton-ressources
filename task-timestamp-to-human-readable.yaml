@@ -25,7 +25,7 @@ spec:
         value: "$(params.timestamp)"
     script: |
       #!/usr/bin/env sh
-      STRING=$(date -d @$TIMESTAMP +"%Y-%m-%d-%H:%M")
+      STRING=$(date -d @$TIMESTAMP +"%Y-%m-%d-%H-%M")
       echo $STRING
       printf "%s" "${STRING}" > $(results.time-string.path)
       # echo -n  "$STRING" >    $(results.time-string.path)

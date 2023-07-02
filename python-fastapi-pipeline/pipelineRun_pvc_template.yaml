@@ -21,7 +21,7 @@ spec:
   - name: context-path
     value: /hello-world
   - name: image-name
-    value: image-registry.openshift-image-registry.svc:5000/tekton-pipelines/fast-api-server
+    value: image-registry.openshift-image-registry.svc:5000/tekton-resources/fast-api-server
   - name: yq-select
     value: (.spec.template.spec.containers[] | select(.name == "my-container") .image)
   - name: yq-target

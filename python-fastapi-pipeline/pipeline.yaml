@@ -1,0 +1,167 @@
+apiVersion: tekton.dev/v1beta1
+kind: Pipeline
+metadata:
+  name: python-lint-test-build-deploy
+  namespace: tekton-resources
+spec:
+  workspaces:
+      - name: ssh-creds
+      - name: app-pvc
+      - name: argo-pvc
+  params:
+  - name: dev-repo-url
+    description: Git url for python application code containing containerfile
+  - name: dev-depl-url
+    description: Git url for openshift deployment manifest repository
+  - name: context-path
+    description: Context path within application and deployment repository
+  - name: image-name
+    description: image name with registry
+  - name: yq-select
+    description: the yq select statement to identify the image field in a K8S manifest or helm values file
+  - name: yq-target
+    description: path to the file the yq statement should get executed
+  tasks:
+
+  - name: clone-repo-app
+    workspaces:
+      - name: ssh-directory
+        workspace: ssh-creds
+      - name: output
+        workspace: app-pvc
+    params:
+      - name: url
+        value: $(params.dev-repo-url)
+      - name: revision
+        value: main
+    taskRef:
+      resolver: hub
+      params:
+      - name: catalog # optional
+        value: tekton-catalog-tasks
+      - name: type # optional
+        value: artifact
+      - name: kind
+        value: task
+      - name: name
+        value: git-clone
+      - name: version
+        value: "0.9"
+
+  - name: transform-timestamp-to-timestring
+    runAfter:
+      - clone-repo-app
+    params:
+      - name: timestamp
+        value: "$(tasks.clone-repo-app.results.committer-date)"
+    taskRef:
+      resolver: cluster
+      params:
+      - name: kind
+        value: task
+      - name: name
+        value: timestamp-to-timestring
+      - name: namespace
+        value: tekton-resources
+
+  - name: clone-repo-deploy
+    workspaces:
+      - name: ssh-directory
+        workspace: ssh-creds
+      - name: source
+        workspace: argo-pvc
+    params:
+      - name: GIT_SCRIPT
+        value: |
+          git clone $(params.dev-depl-url)
+          chmod 777 -R .
+    taskRef:
+      resolver: hub
+      params:
+      - name: catalog # optional
+        value: tekton-catalog-tasks
+      - name: type # optional
+        value: artifact
+      - name: kind
+        value: task
+      - name: name
+        value: git-cli
+      - name: version
+        value: "0.4"
+
+  - name: update-deployment-repo-using-yq
+    runAfter:
+      - clone-repo-deploy
+    workspaces:
+      - name: source
+        workspace: argo-pvc
+    params:
+      - name: SCRIPT
+        value: |
+          yq -i '$(params.yq-select) = "$(params.image-name):$(tasks.clone-repo-app.results.committer-date)-$(tasks.clone-repo-app.results.commit)"' $(params.yq-target)
+    taskRef:
+      resolver: hub
+      params:
+      - name: catalog # optional
+        value: tekton-catalog-tasks
+      - name: type # optional
+        value: artifact
+      - name: kind
+        value: task
+      - name: name
+        value: yq
+      - name: version
+        value: "0.4"
+
+  - name: build-and-push
+    runAfter:
+      - clone-repo-app
+    workspaces:
+      - name: source
+        workspace: app-pvc
+    params:
+      - name: IMAGE
+        value: $(params.image-name):$(tasks.transform-timestamp-to-timestring.results.time-string)-$(tasks.clone-repo-app.results.commit)
+    taskRef:
+      resolver: cluster
+      params:
+      - name: kind
+        value: task
+      - name: name
+        value: buildah
+      - name: namespace
+        value: tekton-resources
+
+  - name: update-argo-repo
+    runAfter:
+      - build-and-push
+    workspaces:
+      - name: ssh-directory
+        workspace: ssh-creds
+      - name: source
+        workspace: argo-pvc
+    params:
+      - name: GIT_SCRIPT
+        value: |
+          cd $(basename $(params.dev-depl-url) .git)
+          git status
+          git add -A
+          git commit -m"update deployment to use image version $(tasks.transform-timestamp-to-timestring.results.time-string)-$(tasks.clone-repo-app.results.commit)"
+          git push
+      - name: GIT_USER_NAME
+        value: "Openshift Pipeline Sevice Account"
+      - name: GIT_USER_EMAIL
+        value: pipeline@example.com
+    taskRef:
+      resolver: hub
+      params:
+      - name: catalog # optional
+        value: tekton-catalog-tasks
+      - name: type # optional
+        value: artifact
+      - name: kind
+        value: task
+      - name: name
+        value: git-cli
+      - name: version
+        value: "0.4"
