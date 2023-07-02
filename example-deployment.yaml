@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: example-buildah
+  name: example-buildah
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: example-buildah
+  template:
+    metadata:
+      labels:
+        app: example-buildah
+    spec:
+      serviceAccountName: pipeline
+      containers:
+      - image: quay.io/buildah/stable:v1.23.3
+        imagePullPolicy: Always
+        name: example-buildah
+        command:
+        - /bin/sh
+        - -c
+        - |
+          sleep infinity
+        volumeMounts:
+        - name: test-volume
+          mountPath: /app/test
+        - name: varlibcontainers
+          mountPath: /var/lib/containers
+        securityContext:
+          privileged: true
+      volumes:
+      - name: test-volume
+        emptyDir: {}
+      - name: varlibcontainers
+        emtpyDir: {}
+      resources: {}
+        
