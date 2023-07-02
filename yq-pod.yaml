@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: yq-pod
+spec:
+  containers:
+  - name: my-container
+    image: mikefarah/yq
+    command:
+    - /bin/sh
+    - "-c"
+    - "while true; do echo 'Hello, World!'; sleep 5; done"
