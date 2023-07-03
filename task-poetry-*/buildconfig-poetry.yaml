@@ -1,0 +1,17 @@
+apiVersion: build.openshift.io/v1
+kind: BuildConfig
+metadata:
+  name: python-poetry
+  namespace: tekton-resources
+spec:
+  source:
+    type: Dockerfile
+    dockerfile: |
+      FROM python:3.11
+      RUN  pip install poetry==1.3.2
+  strategy:
+    type: Docker
+  output:
+    to:
+      kind: ImageStreamTag
+      name: 'python-poetry:3.11'

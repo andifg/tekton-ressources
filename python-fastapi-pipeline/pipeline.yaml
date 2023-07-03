@@ -1,7 +1,7 @@
 apiVersion: tekton.dev/v1beta1
 kind: Pipeline
 metadata:
-  name: python-lint-test-build-deploy
+  name: python-poetry-pipeline
   namespace: tekton-resources
 spec:
   workspaces:
@@ -177,7 +177,7 @@ spec:
     params:
       - name: SCRIPT
         value: |
-          yq -i '$(params.yq-select) = "$(params.image-name):$(tasks.clone-repo-app.results.committer-date)-$(tasks.clone-repo-app.results.commit)"' $(params.yq-target)
+          yq -i '$(params.yq-select) = "$(params.image-name):$(tasks.transform-timestamp-to-timestring.results.time-string)-$(tasks.clone-repo-app.results.commit)"' $(params.yq-target)
     taskRef:
       resolver: hub
       params:
@@ -217,6 +217,7 @@ spec:
       - poetry-run-test
       - poetry-run-lint
       - poetry-run-format
+      - update-deployment-repo-using-yq
     workspaces:
       - name: ssh-directory
         workspace: ssh-creds
