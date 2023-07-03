@@ -69,6 +69,63 @@ spec:
       - name: namespace
         value: tekton-resources
 
+  - name: poetry-run-format
+    runAfter:
+      - poetry-install
+    workspaces:
+      - name: source
+        workspace: app-pvc
+    params:
+      - name: command
+        value: ./scripts/format.sh
+    taskRef:
+      resolver: cluster
+      params:
+      - name: kind
+        value: task
+      - name: name
+        value: poetry-run
+      - name: namespace
+        value: tekton-resources
+
+  - name: poetry-run-lint
+    runAfter:
+      - poetry-install
+    workspaces:
+      - name: source
+        workspace: app-pvc
+    params:
+      - name: command
+        value: ./scripts/lint.sh
+    taskRef:
+      resolver: cluster
+      params:
+      - name: kind
+        value: task
+      - name: name
+        value: poetry-run
+      - name: namespace
+        value: tekton-resources
+
+  - name: poetry-run-test
+    runAfter:
+      - poetry-install
+    workspaces:
+      - name: source
+        workspace: app-pvc
+    params:
+      - name: command
+        value: ./scripts/test.sh
+    taskRef:
+      resolver: cluster
+      params:
+      - name: kind
+        value: task
+      - name: name
+        value: poetry-run
+      - name: namespace
+        value: tekton-resources
+
   - name: transform-timestamp-to-timestring
     runAfter:
       - clone-repo-app
@@ -113,6 +170,7 @@ spec:
   - name: update-deployment-repo-using-yq
     runAfter:
       - clone-repo-deploy
+      - transform-timestamp-to-timestring
     workspaces:
       - name: source
         workspace: argo-pvc
@@ -156,7 +214,9 @@ spec:
   - name: update-argo-repo
     runAfter:
       - build-and-push
-      - poetry-install
+      - poetry-run-test
+      - poetry-run-lint
+      - poetry-run-format
     workspaces:
       - name: ssh-directory
         workspace: ssh-creds
