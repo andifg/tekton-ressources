@@ -10,7 +10,7 @@ spec:
       - name: kind
         value: pipeline
       - name: name
-        value: python-lint-test-build-deploy
+        value: python-poetry-pipeline
       - name: namespace
         value: tekton-resources
   params:
