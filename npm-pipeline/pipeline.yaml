@@ -24,6 +24,10 @@ spec:
   - name: dockerfile
     description: path to the dockerfile
     default: ./Dockerfile
+  - name: target-branch
+    description: target branch for the deployment repository
+  - name: source-branch
+    description: source branch
   tasks:
 
   - name: clone-repo-app
@@ -36,7 +40,7 @@ spec:
       - name: url
         value: $(params.dev-repo-url)
       - name: revision
-        value: main
+        value: $(params.source-branch)
     taskRef:
       resolver: hub
       params:
@@ -153,6 +157,8 @@ spec:
       - name: GIT_SCRIPT
         value: |
           git clone $(params.dev-depl-url)
+          cp -r $(basename $(params.dev-depl-url) .git)/. .
+          rm -rf $(basename $(params.dev-depl-url) .git)
           chmod 777 -R .
     taskRef:
       resolver: hub
@@ -168,7 +174,8 @@ spec:
       - name: version
         value: "0.4"
 
-  - name: update-deployment-repo-using-yq
+
+  - name: update-prod-deployment-repo-using-yq
     runAfter:
       - clone-repo-deploy
       - transform-timestamp-to-timestring
@@ -178,7 +185,39 @@ spec:
     params:
       - name: SCRIPT
         value: |
-          yq -i '$(params.yq-select) = "$(params.image-name):$(tasks.transform-timestamp-to-timestring.results.time-string)-$(tasks.clone-repo-app.results.commit)"' $(params.yq-target)
+          yq -i '$(params.yq-select) = "$(params.image-name):$(tasks.transform-timestamp-to-timestring.results.time-string)-$(tasks.clone-repo-app.results.commit)"' prod/$(params.yq-target)
+    taskRef:
+      resolver: hub
+      params:
+      - name: catalog # optional
+        value: tekton-catalog-tasks
+      - name: type # optional
+        value: artifact
+      - name: kind
+        value: task
+      - name: name
+        value: yq
+      - name: version
+        value: "0.4"
+    when:
+      - input: $(params.source-branch)
+        operator: in
+        values: ["main"]
+      - input: $(params.target-branch)
+        operator: in
+        values: ["main"]
+
+  - name: update-test-deployment-repo-using-yq
+    runAfter:
+      - clone-repo-deploy
+      - transform-timestamp-to-timestring
+    workspaces:
+      - name: source
+        workspace: argo-pvc
+    params:
+      - name: SCRIPT
+        value: |
+          yq -i '$(params.yq-select) = "$(params.image-name):$(tasks.transform-timestamp-to-timestring.results.time-string)-$(tasks.clone-repo-app.results.commit)"' test/$(params.yq-target)
     taskRef:
       resolver: hub
       params:
@@ -220,7 +259,8 @@ spec:
       - npm-run-test
       - npm-run-lint
       - npm-run-format
-      - update-deployment-repo-using-yq
+      - update-prod-deployment-repo-using-yq
+      - update-test-deployment-repo-using-yq
     workspaces:
       - name: ssh-directory
         workspace: ssh-creds
@@ -229,7 +269,6 @@ spec:
     params:
       - name: GIT_SCRIPT
         value: |
-          cd $(basename $(params.dev-depl-url) .git)
           git status
           git add -A
           git commit -m"update deployment to use image version $(tasks.transform-timestamp-to-timestring.results.time-string)-$(tasks.clone-repo-app.results.commit)"
