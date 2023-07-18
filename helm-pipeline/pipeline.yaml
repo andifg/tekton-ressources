@@ -1,0 +1,366 @@
+apiVersion: tekton.dev/v1beta1
+kind: Pipeline
+metadata:
+  name: helm-pipeline
+  namespace: tekton-resources
+spec:
+  workspaces:
+      - name: ssh-creds
+      - name: app-pvc
+      - name: argo-pvc
+  params:
+  - name: dev-repo-url
+    description: Git url for python application code containing containerfile
+  - name: dev-depl-url
+    description: Git url for openshift deployment manifest repository
+  - name: chart-name
+    description: chart name within repository
+  - name: yq-select
+    description: the yq select statement to identify the image field in a K8S manifest or helm values file
+  - name: yq-target
+    description: path to the file the yq statement should get executed
+  - name: target-branch
+    description: target branch for the deployment repository
+  - name: source-branch
+    description: source branch
+  - name: aws-credential-secret
+    description: aws credential secret
+    default: aws-ecr-creds
+  - name: aws-region
+    description: aws region
+    default: eu-central-1
+  - name: ecr-registry
+    description: ecr registry
+  - name: ecr-user
+    default: aws
+  tasks:
+
+  - name: clone-repo-app
+    workspaces:
+      - name: ssh-directory
+        workspace: ssh-creds
+      - name: output
+        workspace: app-pvc
+    params:
+      - name: url
+        value: $(params.dev-repo-url)
+      - name: revision
+        value: $(params.source-branch)
+    taskRef:
+      resolver: hub
+      params:
+      - name: catalog # optional
+        value: tekton-catalog-tasks
+      - name: type # optional
+        value: artifact
+      - name: kind
+        value: task
+      - name: name
+        value: git-clone
+      - name: version
+        value: "0.9"
+
+  - name: lint-helm-chart
+    runAfter:
+      - clone-repo-app
+    workspaces:
+      - name: source
+        workspace: app-pvc
+    params:
+      - name: IMAGE
+        value: lachlanevenson/k8s-helm:v3.10.2
+      - name: chart-name
+        value: $(params.chart-name)
+    taskSpec:
+      params:
+        - name: chart-name
+        - name: IMAGE
+      steps:
+        - name: helm-package
+          image: $(params.IMAGE)
+          workingDir: $(workspaces.source.path)
+          env:
+            - name: CHART_NAME
+              value: $(params.chart-name)
+          script: |
+            helm lint $CHART_NAME
+
+  - name: clone-repo-deploy
+    workspaces:
+      - name: ssh-directory
+        workspace: ssh-creds
+      - name: source
+        workspace: argo-pvc
+    params:
+      - name: GIT_SCRIPT
+        value: |
+          git clone $(params.dev-depl-url)
+          cp -r $(basename $(params.dev-depl-url) .git)/. .
+          rm -rf $(basename $(params.dev-depl-url) .git)
+      - name: USER_HOME
+        value: /home/git
+    taskRef:
+      resolver: hub
+      params:
+      - name: catalog # optional
+        value: tekton-catalog-tasks
+      - name: type # optional
+        value: artifact
+      - name: kind
+        value: task
+      - name: name
+        value: git-cli
+      - name: version
+        value: "0.4"
+
+  - name: transform-timestamp-to-timestring
+    runAfter:
+      - clone-repo-app
+    params:
+      - name: timestamp
+        value: "$(tasks.clone-repo-app.results.committer-date)"
+    taskRef:
+      resolver: cluster
+      params:
+      - name: kind
+        value: task
+      - name: name
+        value: timestamp-to-timestring
+      - name: namespace
+        value: tekton-resources
+
+  - name: update-chart-version
+    runAfter:
+      - transform-timestamp-to-timestring
+    workspaces:
+      - name: source
+        workspace: app-pvc
+    params:
+      - name: SCRIPT
+        value: |
+          yq -i '.version = "$(tasks.transform-timestamp-to-timestring.results.time-string)-$(tasks.clone-repo-app.results.commit)"' $(params.chart-name)/Chart.yaml
+    taskRef:
+      resolver: hub
+      params:
+      - name: catalog # optional
+        value: tekton-catalog-tasks
+      - name: type # optional
+        value: artifact
+      - name: kind
+        value: task
+      - name: name
+        value: yq
+      - name: version
+        value: "0.4"
+
+  - name: package-helm-chart
+    runAfter:
+      - clone-repo-app
+      - update-chart-version
+    workspaces:
+      - name: source
+        workspace: app-pvc
+    params:
+      - name: IMAGE
+        value: lachlanevenson/k8s-helm:v3.10.2
+      - name: chart-name
+        value: $(params.chart-name)
+    taskSpec:
+      params:
+        - name: chart-name
+        - name: IMAGE
+      steps:
+        - name: helm-package
+          image: $(params.IMAGE)
+          workingDir: $(workspaces.source.path)
+          env:
+            - name: CHART_NAME
+              value: $(params.chart-name)
+          script: |
+            helm package $CHART_NAME
+
+  - name: get-ecr-token
+    runAfter:
+      - clone-repo-app
+    params:
+      - name: aws-credential-secret
+        value: $(params.aws-credential-secret)
+      - name: aws-region
+        value: $(params.aws-region)
+    taskSpec:
+      params:
+        - name: aws-credential-secret
+        - name: aws-region
+      results:
+      - name: ecr-token
+        description: Token to be able to push to ECR
+      steps:
+        - name: fetch-token
+          image: amazon/aws-cli
+          env:
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  key: "aws-access-key-id"
+                  name: $(params.aws-credential-secret)
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  key: "aws-secret-access-key"
+                  name: $(params.aws-credential-secret)
+            - name: AWS_REGION
+              value: $(params.aws-region)
+          script: |
+            #!/usr/bin/env bash
+            echo "Receive push token for ECR"
+            token=$(aws ecr get-login-password)
+            printf "%s" "${token}" > $(results.ecr-token.path)
+
+  - name: push-helm-chart
+    runAfter:
+      - get-ecr-token
+      - package-helm-chart
+    workspaces:
+      - name: source
+        workspace: app-pvc
+    params:
+      - name: IMAGE
+        value: lachlanevenson/k8s-helm:v3.10.2
+      - name: chart-name
+        value: $(params.chart-name)
+      - name: ecr-token
+        value: $(tasks.get-ecr-token.results.ecr-token)
+      - name: ecr-registry
+        value: $(params.ecr-registry)
+      - name: ecr-user
+        value: $(params.ecr-user)
+      - name: chart-version
+        value: $(tasks.transform-timestamp-to-timestring.results.time-string)-$(tasks.clone-repo-app.results.commit)
+    taskSpec:
+      params:
+        - name: chart-name
+        - name: IMAGE
+        - name: ecr-token
+        - name: ecr-registry
+        - name: ecr-user
+        - name: chart-version
+      steps:
+        - name: push-helm-chart
+          image: $(params.IMAGE)
+          workingDir: $(workspaces.source.path)
+          env:
+            - name: HOME
+              value: $(workspaces.source.path)
+            - name: CHART_NAME
+              value: $(params.chart-name)
+            - name: ECR_TOKEN
+              value: $(params.ecr-token)
+            - name: ECR_REGISTRY
+              value: $(params.ecr-registry)
+            - name: ECR_USER
+              value: $(params.ecr-user)
+            - name: CHART_NAME
+              value: $(params.chart-name)
+            - name: CHART_VERSION
+              value: $(params.chart-version)
+          script: |
+            #!/usr/bin/env sh
+            helm registry login --username $ECR_USER  --password $ECR_TOKEN $ECR_REGISTRY
+            helm push $CHART_NAME-$CHART_VERSION.tgz oci://$ECR_REGISTRY
+
+
+  - name: update-prod-deployment-repo-using-yq
+    runAfter:
+      - clone-repo-deploy
+      - transform-timestamp-to-timestring
+    workspaces:
+      - name: source
+        workspace: argo-pvc
+    params:
+      - name: SCRIPT
+        value: |
+          yq -i '$(params.yq-select) = "$(tasks.transform-timestamp-to-timestring.results.time-string)-$(tasks.clone-repo-app.results.commit)"' prod/$(params.yq-target)
+    taskRef:
+      resolver: hub
+      params:
+      - name: catalog # optional
+        value: tekton-catalog-tasks
+      - name: type # optional
+        value: artifact
+      - name: kind
+        value: task
+      - name: name
+        value: yq
+      - name: version
+        value: "0.4"
+    when:
+      - input: $(params.source-branch)
+        operator: in
+        values: ["main"]
+      - input: $(params.target-branch)
+        operator: in
+        values: ["main"]
+
+  - name: update-test-deployment-repo-using-yq
+    runAfter:
+      - clone-repo-deploy
+      - transform-timestamp-to-timestring
+    workspaces:
+      - name: source
+        workspace: argo-pvc
+    params:
+      - name: SCRIPT
+        value: |
+          yq -i '$(params.yq-select) = "$(tasks.transform-timestamp-to-timestring.results.time-string)-$(tasks.clone-repo-app.results.commit)"' test/$(params.yq-target)
+    taskRef:
+      resolver: hub
+      params:
+      - name: catalog # optional
+        value: tekton-catalog-tasks
+      - name: type # optional
+        value: artifact
+      - name: kind
+        value: task
+      - name: name
+        value: yq
+      - name: version
+        value: "0.4"
+
+  - name: update-argo-repo
+    runAfter:
+      - push-helm-chart
+      - update-prod-deployment-repo-using-yq
+      - update-test-deployment-repo-using-yq
+      - lint-helm-chart
+    workspaces:
+      - name: ssh-directory
+        workspace: ssh-creds
+      - name: source
+        workspace: argo-pvc
+    params:
+      - name: GIT_SCRIPT
+        value: |
+          git config --global --add safe.directory $(workspaces.source.path)
+          git status
+          git add -A
+          git commit -m"update deployment to use image version $(tasks.transform-timestamp-to-timestring.results.time-string)-$(tasks.clone-repo-app.results.commit)"
+          git push
+      - name: GIT_USER_NAME
+        value: "Openshift Pipeline Sevice Account"
+      - name: GIT_USER_EMAIL
+        value: pipeline@example.com
+      - name: USER_HOME
+        value: /home/git
+    taskRef:
+      resolver: hub
+      params:
+      - name: catalog # optional
+        value: tekton-catalog-tasks
+      - name: type # optional
+        value: artifact
+      - name: kind
+        value: task
+      - name: name
+        value: git-cli
+      - name: version
+        value: "0.4"

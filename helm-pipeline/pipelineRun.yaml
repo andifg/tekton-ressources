@@ -1,0 +1,64 @@
+apiVersion: tekton.dev/v1beta1
+kind: PipelineRun
+metadata:
+  generateName: helm-pipeline-
+  namespace: helm-pipeline-test
+spec:
+  pipelineRef:
+    resolver: cluster
+    params:
+      - name: kind
+        value: pipeline
+      - name: name
+        value: helm-pipeline
+      - name: namespace
+        value: tekton-resources
+  podTemplate:
+    securityContext:
+      runAsUser: 65532
+      fsGroup: 65532
+  params:
+  - name: dev-repo-url
+    value: git@github.com:andifg/helm-pipeline-test-chart.git
+  - name: dev-depl-url
+    value: git@github.com:andifg/helm-pipeline-test-deployment.git
+  - name: chart-name
+    value: test-pipeline-chart
+  - name: yq-select
+    value: .spec.source.targetRevision
+  - name: yq-target
+    value: application.yaml
+  - name: target-branch
+    value: main
+  - name: source-branch
+    value: main
+  - name: aws-credential-secret
+    value: aws-ecr-access
+  - name: aws-region
+    value: eu-central-1
+  - name: ecr-registry
+    value: 663151261323.dkr.ecr.eu-central-1.amazonaws.com
+  - name: ecr-user
+    value: AWS
+  workspaces:
+  - name: ssh-creds
+    secret:
+      secretName: ssh-creds
+  - name: app-pvc
+    volumeClaimTemplate:
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 300Mi
+        volumeMode: Filesystem
+  - name: argo-pvc
+    volumeClaimTemplate:
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 300Mi
+        volumeMode: Filesystem
