@@ -1,0 +1,15 @@
+apiVersion: tekton.dev/v1beta1
+kind: TaskRun
+metadata:
+  generateName:  docker-sidecar-
+  namespace: tekton-resources
+spec:
+  taskRef:
+    resolver: cluster
+    params:
+    - name: kind
+      value: task
+    - name: name
+      value: docker-sidecar-test
+    - name: namespace
+      value: tekton-resources

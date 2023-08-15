@@ -126,7 +126,7 @@ spec:
       - name: kind
         value: task
       - name: name
-        value: poetry-run
+        value: poetry-test
       - name: namespace
         value: tekton-resources
 

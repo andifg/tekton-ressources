@@ -28,15 +28,24 @@ spec:
         value: $(workspaces.source.path)/venv
       - name: COMMAND
         value: $(params.command)
+      - name: DOCKER_TLS_CERTDIR
+        value: /certs
     script: |
-      docker run hello-world
-      # poetry run $COMMAND
+      # Currently sleep to wait until docker has created the TLS certs
+      sleep 5
+      docker version
+      poetry run $COMMAND
     volumeMounts:
       - mountPath: /var/run/
         name: dind-socket
+      - mountPath: /certs
+        name: dind-certs
   sidecars:
-  - image: docker:18.05-dind
+  - image: docker:24.0.5-dind
     name: docker
+    env:
+      - name: DOCKER_TLS_CERTDIR
+        value: /certs
     securityContext:
       privileged: true
       runAsNonRoot: false
@@ -45,8 +54,12 @@ spec:
         name: dind-storage
       - mountPath: /var/run/
         name: dind-socket
+      - mountPath: /certs
+        name: dind-certs
   volumes:
     - name: dind-storage
       emptyDir: {}
     - name: dind-socket
+      emptyDir: {}
+    - name: dind-certs
       emptyDir: {}

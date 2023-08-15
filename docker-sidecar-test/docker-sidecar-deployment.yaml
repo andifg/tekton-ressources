@@ -1,0 +1,75 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: simple-deployment
+    app.kubernetes.io/component: simple-deployment
+    app.kubernetes.io/instance: simple-deployment
+    app.kubernetes.io/part-of: simple-deployment
+    app.openshift.io/runtime: redhat
+  name: simple-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: simple-deployment
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: simple-deployment
+        deploymentconfig: simple-deployment
+    spec:
+      serviceAccountName: pipeline
+      containers:
+      - image: image-registry.openshift-image-registry.svc:5000/tekton-resources/python-poetry:3.11-docker
+        name: simple-deployment
+        env:
+        - name: DOCKER_TLS_CERTDIR
+          value: /certs
+        volumeMounts:
+        - mountPath: /var/run/
+          name: dind-socket
+        - mountPath: /certs
+          name: dind-certs
+        - mountPath: /app
+          name: app-pvc
+        command:
+        - sleep
+        - "1000000"
+
+      - image: docker:24.0.5-dind
+        name: docker-sidecar
+        env:
+        - name: DOCKER_TLS_CERTDIR
+          value: /certs
+        volumeMounts:
+        - mountPath: /var/run/
+          name: dind-socket
+        - mountPath: /certs
+          name: dind-certs
+        - mountPath: /app
+          name: app-pvc
+        securityContext:
+          privileged: true
+      volumes:
+      - name: dind-certs
+        emptyDir: {}
+      - name: dind-socket
+        emptyDir: {}
+      - name: app-pvc
+        persistentVolumeClaim:
+          claimName: app-pvc
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: app-pvc
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 1Gi
+  storageClassName: managed-nfs-storage
+  volumeBindingMode: Immediate

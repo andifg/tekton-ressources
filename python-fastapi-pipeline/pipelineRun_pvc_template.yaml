@@ -25,7 +25,11 @@ spec:
   - name: yq-select
     value: (.spec.template.spec.containers[] | select(.name == "my-container") .image)
   - name: yq-target
-    value: openshift-pipelines-application/hello-world/deployment.yaml
+    value: helloworld/deployment.yaml
+  - name: target-branch
+    value: main
+  - name: source-branch
+    value: main
   workspaces:
   - name: ssh-creds
     secret:
