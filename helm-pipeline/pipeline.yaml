@@ -153,10 +153,35 @@ spec:
       - name: version
         value: "0.4"
 
+  - name: helm-dependency-update
+    runAfter:
+      - clone-repo-app
+    workspaces:
+      - name: source
+        workspace: app-pvc
+    params:
+      - name: chart-name
+        value: $(params.chart-name)
+    taskSpec:
+      params:
+        - name: chart-name
+      steps:
+        - name: helm-dependency-update
+          image: lachlanevenson/k8s-helm:v3.10.2
+          workingDir: $(workspaces.source.path)
+          env:
+            - name: CHART_NAME
+              value: $(params.chart-name)
+            - name: HELM_EXPERIMENTAL_OCI
+              value: "1"
+          script: |
+            helm dependency update $CHART_NAME
+
   - name: package-helm-chart
     runAfter:
       - clone-repo-app
       - update-chart-version
+      - helm-dependency-update
     workspaces:
       - name: source
         workspace: app-pvc
