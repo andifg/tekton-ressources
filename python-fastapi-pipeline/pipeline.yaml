@@ -197,13 +197,6 @@ spec:
         value: yq
       - name: version
         value: "0.4"
-    when:
-      - input: $(params.source-branch)
-        operator: in
-        values: ["main"]
-      - input: $(params.target-branch)
-        operator: in
-        values: ["main"]
 
   - name: update-prod-deployment-repo-using-yq
     runAfter:
@@ -229,6 +222,14 @@ spec:
         value: yq
       - name: version
         value: "0.4"
+    when:
+      - input: $(params.source-branch)
+        operator: in
+        values: ["main"]
+      - input: $(params.target-branch)
+        operator: in
+        values: ["main"]
+
 
   - name: build-and-push
     runAfter:
