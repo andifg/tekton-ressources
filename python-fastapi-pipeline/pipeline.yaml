@@ -267,6 +267,7 @@ spec:
       - name: GIT_SCRIPT
         value: |
           git status
+          git pull
           git add -A
           git commit -m"update deployment to use image version $(tasks.transform-timestamp-to-timestring.results.time-string)-$(tasks.clone-repo-app.results.commit)"
           git push
