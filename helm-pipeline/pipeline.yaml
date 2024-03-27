@@ -368,8 +368,12 @@ spec:
           git config --global --add safe.directory $(workspaces.source.path)
           git status
           git add -A
-          git commit -m"update deployment to use image version $(tasks.transform-timestamp-to-timestring.results.time-string)-$(tasks.clone-repo-app.results.commit)"
-          git push
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m"update helm release to use chart version $(tasks.transform-timestamp-to-timestring.results.time-string)-$(tasks.clone-repo-app.results.commit)"
+            git push
+          fi
       - name: GIT_USER_NAME
         value: "Openshift Pipeline Sevice Account"
       - name: GIT_USER_EMAIL
