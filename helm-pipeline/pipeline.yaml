@@ -63,6 +63,7 @@ spec:
   - name: lint-helm-chart
     runAfter:
       - clone-repo-app
+      - helm-dependency-update
     workspaces:
       - name: source
         workspace: app-pvc
